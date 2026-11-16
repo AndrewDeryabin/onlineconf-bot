@@ -1,6 +1,10 @@
 /onlineconf-myteam-bot
 /onlineconf-mattermost-bot
+/onlineconf-yamessenger-bot
 
 .vscode
 .devcontainer
 *.cdb
+
+/bin
+/vendor

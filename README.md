@@ -1,10 +1,12 @@
 # onlineconf-bot
 
-`onlineconf-bot` is used to send [OnlineConf](https://github.com/onlineconf/onlineconf) configuration changes notifications to subscribed users using [Myteam](https://biz.mail.ru/myteam/) or [Mattermost](https://mattermost.com/) messengers.
+`onlineconf-bot` is used to send [OnlineConf](https://github.com/onlineconf/onlineconf) configuration changes notifications to subscribed users using [Myteam](https://biz.mail.ru/myteam/), [Mattermost](https://mattermost.com/), or [Yandex Messenger](https://360.yandex.com/business/messenger/) messengers.
+
+Besides changes, the bot delivers the **audit events** of OnlineConf — today the reveals of encrypted values: every time a user asks OnlineConf to show the plaintext of an encrypted parameter (or its history), the users who have access to that parameter are told who did it. The value itself is never part of a message: an encrypted value shows as a lock in change notifications too.
 
 ## Requirements
 
-OnlineConf (`onlineconf-admin`) >= v3.5.0
+OnlineConf (`onlineconf-admin`) >= v3.5.0; the audit feed needs an `onlineconf-admin` with value encryption (BotAPI `GET /audit/`). Against an older admin, or a bot account without the `audit` scope, the bot logs that the feed is unavailable and checks again later.
 
 ## Installation
 
@@ -14,15 +16,17 @@ An address and credentials of the database must be stored in the `/database` par
 
 The only one instance of `onlineconf-bot` daemon should be run simultaneously.
 
-Two separate binaries will be built for each messenger supported, see `Dockerfile` for an example.
+Separate binaries will be built for each messenger supported, see `Dockerfile` for an example.
 
 ## Configuration
 
-`onlineconf-bot` uses OnlineConf BotAPI to retrieve notifications from OnlineConf.
+`onlineconf-bot` uses OnlineConf BotAPI to retrieve notifications and audit events from OnlineConf.
 To add BotAPI user for `onlineconf-bot` the following configuration is required:
 
 * `/onlineconf/botapi/bot/onlineconf-bot` - the parameter name is the username, a value is SHA256 of a password (required)
-* `/onlineconf/botapi/bot/onlineconf-bot/scopes` = `notifications` (list, required)
+* `/onlineconf/botapi/bot/onlineconf-bot/scopes` = `notifications,audit` (list; `notifications` required, `audit` enables the audit feed)
+
+Each BotAPI feed keeps its own cursor in the `lastid` table of the bot's database (`ID` 0 for notifications, 1000 for audit events, leaving the ids in between to per-bot notification cursors); an installation created before the audit feed gets the audit row from [sql/upgrade.sql](/sql/upgrade.sql).
 
 `onlineconf-bot` is configured using OnlineConf itself, it reads `onlineconf-bot` module (`/usr/local/etc/onlineconf-bot.cdb` file).
 The module must be configured to contain the following `/`-separated parameters:
@@ -39,6 +43,9 @@ The module must be configured to contain the following `/`-separated parameters:
 * `myteam` (only used by `onlineconf-myteam-bot`)
 	* `token` - a bot token retrieved from Metabot (required)
 	* `url` - URL of an alternative Myteam installation
+* `yamessenger` (only used by `onlineconf-yamessenger-bot`)
+	* `token` - OAuth bot token from Yandex 360 Bot Platform (required)
+	* `api-url` - Yandex Messenger Bot API URL (default: `https://botapi.messenger.yandex.net`)
 * `onlineconf`
 	* `botapi`
 		* `password` - password (required)
@@ -49,6 +56,10 @@ The module must be configured to contain the following `/`-separated parameters:
 * `user`
 	* `domain` - domain name appended to OnlineConf username to match the messenger account
 	* `map` - YAML/JSON-mapping of non-standard usernames from OnlineConf to the messenger account (without domain name)
+* `probe`
+    * `addr` - Address where to listen web-server for probes (default: `0.0.0.0:8000`)
+    * `uri`  - Http uri where to listen on web-server (default: `/probe`)
+    * `enabled` - Enable or disable probe-server (default: disabled)<br>
 
 This configuration must be placed in OnlineConf under `/onlineconf/module/onlineconf-bot`.
 
@@ -57,7 +68,7 @@ The best way to achieve the described configuration on a server (or a container)
 | Path | Type | Value |
 | ---- | ---- | ----- |
 | `/onlineconf/botapi/bot/onlineconf-bot` | Text | SHA256 of a password used by `onlineconf-bot` to connect to OnlineConf BotAPI |
-| `/onlineconf/botapi/bot/onlineconf-bot/scopes` | List | `notifications` |
+| `/onlineconf/botapi/bot/onlineconf-bot/scopes` | List | `notifications,audit` |
 | `/onlineconf/service/onlineconf-bot` | Text | SHA256 of a password used by `onlineconf-updater`/`onlineconf-csi-driver` |
 | `/onlineconf/module` | Case | key: service = `onlineconf-bot`<br/>value: symlink to `/onlineconf/chroot/onlineconf-bot` |
 | `/onlineconf/chroot/onlineconf-bot` | YAML | `delimiter: /` |
